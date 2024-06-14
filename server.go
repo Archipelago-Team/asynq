@@ -103,6 +103,15 @@ type Config struct {
 	// If BaseContext is nil, the default is context.Background().
 	// If this is defined, then it MUST return a non-nil context
 	BaseContext func() context.Context
+	
+	// TaskCheckInterval specifies the interval between checks for new tasks to process when all queues are empty.
+	//
+	// If unset, zero or a negative value, the interval is set to 1 second.
+	//
+	// Note: Setting this value too low may add significant load to redis.
+	//
+	// By default, TaskCheckInterval is set to 1 seconds.
+	TaskCheckInterval time.Duration
 
 	// TaskCheckInterval specifies the interval between checks for new tasks to process when all queues are empty.
 	//
@@ -239,6 +248,17 @@ type Config struct {
 	//
 	// If unset or nil, the group aggregation feature will be disabled on the server.
 	GroupAggregator GroupAggregator
+
+	// JanitorInterval specifies the average interval of janitor checks for expired completed tasks.
+	//
+	// If unset or zero, default interval of 8 seconds is used.
+	JanitorInterval time.Duration
+
+	// JanitorBatchSize specifies the number of expired completed tasks to be deleted in one run.
+	//
+	// If unset or zero, default batch size of 100 is used.
+	// Make sure to not put a big number as the batch size to prevent a long-running script.
+	JanitorBatchSize int
 }
 
 // GroupAggregator aggregates a group of tasks into one before the tasks are passed to the Handler.
@@ -408,6 +428,10 @@ const (
 	defaultDelayedTaskCheckInterval = 5 * time.Second
 
 	defaultGroupGracePeriod = 1 * time.Minute
+
+	defaultJanitorInterval = 8 * time.Second
+
+	defaultJanitorBatchSize = 100
 )
 
 // NewServer returns a new Server given a redis connection option
@@ -547,11 +571,26 @@ func NewServer(r RedisConnOpt, cfg Config) *Server {
 		interval:        healthcheckInterval,
 		healthcheckFunc: cfg.HealthCheckFunc,
 	})
+
+	janitorInterval := cfg.JanitorInterval
+	if janitorInterval == 0 {
+		janitorInterval = defaultJanitorInterval
+	}
+
+	janitorBatchSize := cfg.JanitorBatchSize
+	if janitorBatchSize == 0 {
+		janitorBatchSize = defaultJanitorBatchSize
+	}
+	if janitorBatchSize > defaultJanitorBatchSize {
+		logger.Warnf("Janitor batch size of %d is greater than the recommended batch size of %d. "+
+			"This might cause a long-running script", janitorBatchSize, defaultJanitorBatchSize)
+	}
 	janitor := newJanitor(janitorParams{
-		logger:   logger,
-		broker:   rdb,
-		queues:   qnames,
-		interval: 8 * time.Second,
+		logger:    logger,
+		broker:    rdb,
+		queues:    qnames,
+		interval:  janitorInterval,
+		batchSize: janitorBatchSize,
 	})
 	aggregator := newAggregator(aggregatorParams{
 		logger:          logger,
