@@ -381,6 +381,11 @@ func (c *Client) EnqueueContext(ctx context.Context, task *Task, opts ...Option)
 	}
 	now := time.Now()
 	var state base.TaskState
+
+	if opt.processAt.After(now) && opt.group != "" {
+		return nil, fmt.Errorf("task options conflict: cannot set both ProcessAt and Group options")
+	}
+
 	if opt.processAt.After(now) {
 		err = c.schedule(ctx, msg, opt.processAt, opt.uniqueTTL)
 		state = base.TaskStateScheduled

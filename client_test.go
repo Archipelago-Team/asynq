@@ -540,52 +540,6 @@ func TestClientEnqueueWithGroupOption(t *testing.T) {
 				"default": {},
 			},
 		},
-		{
-			desc: "With Group and ProcessIn options",
-			task: task,
-			opts: []Option{
-				Group("mygroup"),
-				ProcessIn(30 * time.Minute),
-			},
-			wantInfo: &TaskInfo{
-				Queue:         "default",
-				Group:         "mygroup",
-				Type:          task.Type(),
-				Payload:       task.Payload(),
-				State:         TaskStateScheduled,
-				MaxRetry:      defaultMaxRetry,
-				Retried:       0,
-				LastErr:       "",
-				LastFailedAt:  time.Time{},
-				Timeout:       defaultTimeout,
-				Deadline:      time.Time{},
-				NextProcessAt: now.Add(30 * time.Minute),
-			},
-			wantPending: map[string][]*base.TaskMessage{
-				"default": {}, // should not be pending
-			},
-			wantGroups: map[string]map[string][]base.Z{
-				"default": {
-					"mygroup": {}, // should not be added to the group yet
-				},
-			},
-			wantScheduled: map[string][]base.Z{
-				"default": {
-					{
-						Message: &base.TaskMessage{
-							Type:     task.Type(),
-							Payload:  task.Payload(),
-							Retry:    defaultMaxRetry,
-							Queue:    "default",
-							Timeout:  int64(defaultTimeout.Seconds()),
-							Deadline: noDeadline.Unix(),
-							GroupKey: "mygroup",
-						},
-						Score: now.Add(30 * time.Minute).Unix(),
-					},
-				},
-			},
-		},
 	}
 
 	for _, tc := range tests {
@@ -593,7 +547,7 @@ func TestClientEnqueueWithGroupOption(t *testing.T) {
 
 		gotInfo, err := client.Enqueue(tc.task, tc.opts...)
 		if err != nil {
-			t.Error(err)
+			t.Errorf("%s;\nEnqueue(task) returned error %v\n", tc.desc, err)
 			continue
 		}
 		cmpOptions := []cmp.Option{
@@ -627,6 +581,22 @@ func TestClientEnqueueWithGroupOption(t *testing.T) {
 				t.Errorf("%s;\nmismatch found in %q; (-want,+got)\n%s", tc.desc, base.ScheduledKey(qname), diff)
 			}
 		}
+	}
+}
+
+func TestClientEnqueueWithGroupAndProcessInOption(t *testing.T) {
+	r := setup(t)
+	client := NewClient(getRedisConnOpt(t))
+	defer client.Close()
+	h.FlushDB(t, r) // clean up db before each test case.
+
+	task := NewTask("mytask", []byte("foo"))
+	if _, err := client.Enqueue(
+		task,
+		Group("mygroup"),
+		ProcessIn(1*time.Hour),
+	); err == nil {
+		t.Errorf("Enqueue(task, Group, ProcessIn) did not return non-nil error")
 	}
 }
 
