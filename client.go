@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq/internal/base"
 	"github.com/hibiken/asynq/internal/errors"
 	"github.com/hibiken/asynq/internal/rdb"
+	"github.com/redis/go-redis/v9"
 )
 
 // A Client is responsible for scheduling tasks.
@@ -150,9 +150,9 @@ func (t deadlineOption) Value() interface{} { return time.Time(t) }
 // TTL duration must be greater than or equal to 1 second.
 //
 // Uniqueness of a task is based on the following properties:
-//     - Task Type
-//     - Task Payload
-//     - Queue Name
+//   - Task Type
+//   - Task Payload
+//   - Queue Name
 func Unique(ttl time.Duration) Option {
 	return uniqueOption(ttl)
 }
@@ -381,6 +381,11 @@ func (c *Client) EnqueueContext(ctx context.Context, task *Task, opts ...Option)
 	}
 	now := time.Now()
 	var state base.TaskState
+
+	if opt.processAt.After(now) && opt.group != "" {
+		return nil, fmt.Errorf("task options conflict: cannot set both ProcessAt and Group options")
+	}
+
 	if opt.processAt.After(now) {
 		err = c.schedule(ctx, msg, opt.processAt, opt.uniqueTTL)
 		state = base.TaskStateScheduled
@@ -396,9 +401,9 @@ func (c *Client) EnqueueContext(ctx context.Context, task *Task, opts ...Option)
 	}
 	switch {
 	case errors.Is(err, errors.ErrDuplicateTask):
-		return nil, fmt.Errorf("%w", ErrDuplicateTask)
+		return nil, fmt.Errorf("task %q: %w", task.Type(), ErrDuplicateTask)
 	case errors.Is(err, errors.ErrTaskIdConflict):
-		return nil, fmt.Errorf("%w", ErrTaskIDConflict)
+		return nil, fmt.Errorf("task %q: %w", task.Type(), ErrTaskIDConflict)
 	case err != nil:
 		return nil, err
 	}

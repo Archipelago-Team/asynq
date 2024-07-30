@@ -89,7 +89,6 @@ func (mux *ServeMux) match(typename string) (h Handler, pattern string) {
 		}
 	}
 	return nil, ""
-
 }
 
 // Handle registers the handler for the given pattern.
@@ -114,6 +113,18 @@ func (mux *ServeMux) Handle(pattern string, handler Handler) {
 	e := muxEntry{h: handler, pattern: pattern}
 	mux.m[pattern] = e
 	mux.es = appendSorted(mux.es, e)
+}
+
+// Patterns returns slice of all registered handler patterns.
+func (mux *ServeMux) Patterns() []string {
+	mux.mu.RLock()
+	defer mux.mu.RUnlock()
+
+	patterns := make([]string, 0, len(mux.m))
+	for pattern := range mux.m {
+		patterns = append(patterns, pattern)
+	}
+	return patterns
 }
 
 func appendSorted(es []muxEntry, e muxEntry) []muxEntry {
@@ -152,5 +163,5 @@ func NotFound(ctx context.Context, task *Task) error {
 	return fmt.Errorf("handler not found for task %q", task.Type())
 }
 
-// NotFoundHandler returns a simple task handler that returns a ``not found`` error.
+// NotFoundHandler returns a simple task handler that returns a “not found“ error.
 func NotFoundHandler() Handler { return HandlerFunc(NotFound) }

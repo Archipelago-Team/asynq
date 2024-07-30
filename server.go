@@ -103,7 +103,7 @@ type Config struct {
 	// If BaseContext is nil, the default is context.Background().
 	// If this is defined, then it MUST return a non-nil context
 	BaseContext func() context.Context
-	
+
 	// TaskCheckInterval specifies the interval between checks for new tasks to process when all queues are empty.
 	//
 	// If unset, zero or a negative value, the interval is set to 1 second.
@@ -260,15 +260,15 @@ type GroupAggregator interface {
 	// Use NewTask(typename, payload, opts...) to set any options for the aggregated task.
 	// The Queue option, if provided, will be ignored and the aggregated task will always be enqueued
 	// to the same queue the group belonged.
-	Aggregate(group string, tasks []*Task) *Task
+	Aggregate(group string, tasks []*Task) (*Task, error)
 }
 
 // The GroupAggregatorFunc type is an adapter to allow the use of  ordinary functions as a GroupAggregator.
 // If f is a function with the appropriate signature, GroupAggregatorFunc(f) is a GroupAggregator that calls f.
-type GroupAggregatorFunc func(group string, tasks []*Task) *Task
+type GroupAggregatorFunc func(group string, tasks []*Task) (*Task, error)
 
 // Aggregate calls fn(group, tasks)
-func (fn GroupAggregatorFunc) Aggregate(group string, tasks []*Task) *Task {
+func (fn GroupAggregatorFunc) Aggregate(group string, tasks []*Task) (*Task, error) {
 	return fn(group, tasks)
 }
 

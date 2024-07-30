@@ -158,13 +158,22 @@ func (a *aggregator) aggregate(t time.Time) {
 			for i, m := range msgs {
 				tasks[i] = NewTask(m.Type, m.Payload)
 			}
-			aggregatedTask := a.ga.Aggregate(gname, tasks)
-			ctx, cancel := context.WithDeadline(context.Background(), deadline)
-			if _, err := a.client.EnqueueContext(ctx, aggregatedTask, Queue(qname)); err != nil {
-				a.logger.Errorf("Failed to enqueue aggregated task (queue=%q, group=%q, setID=%q): %v",
+			aggregatedTask, err := a.ga.Aggregate(gname, tasks)
+			if err != nil {
+				a.logger.Errorf("Failed to aggregate tasks: queue=%q, group=%q, setID=%q: %v",
 					qname, gname, aggregationSetID, err)
-				cancel()
 				continue
+			}
+
+			ctx, cancel := context.WithDeadline(context.Background(), deadline)
+			// NOTE: if a nil is returned, it means the aggregator decided to enqueue this on its own.
+			if aggregatedTask != nil {
+				if _, err := a.client.EnqueueContext(ctx, aggregatedTask, Queue(qname)); err != nil {
+					a.logger.Errorf("Failed to enqueue aggregated task (queue=%q, group=%q, setID=%q): %v",
+						qname, gname, aggregationSetID, err)
+					cancel()
+					continue
+				}
 			}
 			if err := a.broker.DeleteAggregationSet(ctx, qname, gname, aggregationSetID); err != nil {
 				a.logger.Warnf("Failed to delete aggregation set: queue=%q, group=%q, setID=%q",
