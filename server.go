@@ -294,6 +294,22 @@ func (fn ErrorHandlerFunc) HandleError(ctx context.Context, task *Task, err erro
 // t is the task in question.
 type RetryDelayFunc func(n int, e error, t *Task) time.Duration
 
+// ErrDelayRetry is an error used to signal
+// that a task should be retried after a delay d, instead
+// of a default retry policy.
+type ErrDelayRetry struct {
+	delay time.Duration
+}
+
+func (e ErrDelayRetry) Error() string {
+	return fmt.Sprintf("delay for %s", e.delay)
+}
+
+// NewErrDelayRetry creates a new DelayRetryError with the given delay.
+func NewErrDelayRetry(delay time.Duration) ErrDelayRetry {
+	return ErrDelayRetry{delay: delay}
+}
+
 // Logger supports logging at various log levels.
 type Logger interface {
 	// Debug logs a message at Debug level.
@@ -446,10 +462,18 @@ func NewServer(r RedisConnOpt, cfg Config) *Server {
 		taskCheckInterval = defaultTaskCheckInterval
 	}
 
-	delayFunc := cfg.RetryDelayFunc
-	if delayFunc == nil {
-		delayFunc = DefaultRetryDelayFunc
+	delayFuncDefault := cfg.RetryDelayFunc
+	if delayFuncDefault == nil {
+		delayFuncDefault = DefaultRetryDelayFunc
 	}
+	delayFunc := func(n int, err error, t *Task) time.Duration {
+		var errDelay ErrDelayRetry
+		if errors.As(err, &errDelay) {
+			return errDelay.delay
+		}
+		return delayFuncDefault(n, err, t)
+	}
+
 	isFailureFunc := cfg.IsFailure
 	if isFailureFunc == nil {
 		isFailureFunc = defaultIsFailureFunc
